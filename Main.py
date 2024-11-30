@@ -239,4 +239,4 @@ while running:
 cap.release()
 cv2.destroyAllWindows()
 pygame.quit()
-print(f"Игра окончена! Ваш результат: {score} баллов.")
+print(f"Game over! Your result: {score} points.")
