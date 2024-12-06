@@ -28,7 +28,7 @@ SHAPES = [
 
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(0)
 
 grid = [[0] * GRID_WIDTH for _ in range(GRID_HEIGHT)]
 current_piece = None
@@ -115,14 +115,30 @@ def get_finger_positions(hand_landmarks):
     }
 
 
-def check_finger_swap(previous_positions, current_positions):
+def check_finger_swap(previous_positions, current_positions, hand_label):
     if not previous_positions or not current_positions:
         return False
 
-    return previous_positions['thumb'][1] < previous_positions['middle'][1] and current_positions['thumb'][1] > current_positions['middle'][1] and current_positions['thumb'][1] - previous_positions['thumb'][1] > 0.02 and current_positions['middle'][1] - previous_positions['middle'][1] < -0.03
+    if hand_label == "Left":
+        return (
+            previous_positions['thumb'][1] < previous_positions['middle'][1] and
+            current_positions['thumb'][1] > current_positions['middle'][1] and
+            current_positions['thumb'][1] - previous_positions['thumb'][1] > 0.02 and
+            current_positions['middle'][1] - previous_positions['middle'][1] < -0.03
+        )
+
+    elif hand_label == "Right":
+        return (
+            previous_positions['thumb'][1] > previous_positions['middle'][1] and
+            current_positions['thumb'][1] < current_positions['middle'][1] and
+            previous_positions['thumb'][1] - current_positions['thumb'][1] > 0.02 and
+            previous_positions['middle'][1] - current_positions['middle'][1] < -0.03
+        )
+
+    return False
 
 
-def detect_gesture(frame, previous_positions, current_positions):
+def detect_gesture(frame, previous_positions, current_positions, hand_label):
     global last_finger_position
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = hands.process(frame_rgb)
@@ -145,7 +161,7 @@ def detect_gesture(frame, previous_positions, current_positions):
                 dx = positions['index'][0] - last_finger_position[0]
                 dy = positions['index'][1] - last_finger_position[1]
 
-                if check_finger_swap(previous_positions, current_positions):
+                if check_finger_swap(previous_positions, current_positions, hand_label):
                     gesture = "rotate"
                 elif abs(dx) > abs(dy):
                     if dx > 0.02:
@@ -153,7 +169,7 @@ def detect_gesture(frame, previous_positions, current_positions):
                     elif dx < -0.02:
                         gesture = "right"
                 else:
-                    if dy > 0.06 and abs(dx) < 0.02:
+                    if dy > 0.05 and abs(dx) < 0.02:
                         gesture = "down"
 
             last_finger_position = positions['index']
@@ -178,6 +194,7 @@ def is_valid_rotation(piece, offset_x, offset_y, direction):
 current_piece = create_piece()
 piece_x, piece_y = GRID_WIDTH // 2, 0
 fall_time = 0
+hand_label = None
 
 running = True
 while running:
@@ -189,12 +206,13 @@ while running:
 
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results_h = hands.process(frame_rgb)
-
     if results_h.multi_hand_landmarks:
         hand_landmarks = results_h.multi_hand_landmarks[0]
         current_positions = get_finger_positions(hand_landmarks)
+        hand_info = results_h.multi_handedness[0]
+        hand_label = hand_info.classification[0].label
 
-    gesture, annotated_frame = detect_gesture(frame, previous_positions, current_positions)
+    gesture, annotated_frame = detect_gesture(frame, previous_positions, current_positions, hand_label)
     previous_positions = current_positions
     if gesture == "left" and is_valid_position(current_piece, piece_x - 1, piece_y):
         piece_x -= 1
@@ -227,7 +245,8 @@ while running:
     draw_piece(current_piece, piece_x, piece_y)
     pygame.display.flip()
 
-    cv2.imshow("Camera", annotated_frame)
+    flipped_frame = cv2.flip(annotated_frame, 1)
+    cv2.imshow("Camera", flipped_frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         running = False
 
